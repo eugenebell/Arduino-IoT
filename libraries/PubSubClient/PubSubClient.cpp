@@ -420,6 +420,8 @@ boolean PubSubClient::connected() {
       rc = false;
    } else {
       rc = (int)_client->connected();
+      println("Eugene :: ");
+      printlln(rc);
       if (!rc) _client->stop();
    }
    return rc;
