@@ -18,8 +18,11 @@ int status = WL_IDLE_STATUS;     // the Wifi radio's status
 byte mac[]    = {  0x90, 0xA2, 0xDA, 0x0E, 0x07, 0x18 };
 byte serverRabbit[] = { 192, 168, 0, 4 };//192.168.0.8
 byte ip[]     = { 192, 168, 0, 4 };
-char* user = "guest";
-char* pwd = "guest";
+//char* user = "guest";
+//char* pwd = "guest";
+char user[] = "mqtt";
+char pwd[] = "mqtt";
+int port = 1883;
 
 char topicTempHum[] = "arduino-weather-exchange"; //change to a proper name!!!!!!!!!!!!!!!!!!!
 
@@ -32,7 +35,7 @@ char message_buff[100];
 //setup MQTT
 WiFiClient wifiClient;
 //MQTT
-PubSubClient client(serverRabbit, 1883, callback, wifiClient);
+PubSubClient client(serverRabbit, port, callback, wifiClient);
   
 void setup() {
   // initialize serial and wait for the port to open:
@@ -77,9 +80,9 @@ void connectToMQTT() {
 if (!client.connected()) {
     delay(1000);
     Serial.println("INFO :: Connecting to RabbitMQ");
-    if (client.connect("ArduinoClient", "guest", "guest")) {
+    if (client.connect("ArduinoClient", user, pwd)) {
       Serial.println("DEBUG :: About to sent message......");
-      client.publish("arduino-weather-exchange","Connected to RabbitMQ");
+      client.publish("arduino-weather-queue","Sensor1,10.0,11.3");
       Serial.println("INFO :: Connected to RabbitMQ");
     } else {
       Serial.println("ERROR :: Failed to Connect to RabbitMQ");
@@ -97,9 +100,14 @@ void publishTempHumMsg(String temp, String humidity) {
   Serial.println("DEBUG :: Sending temp ");
   Serial.println(temp);
   //"io.m2m/arduino/lightsensor"
-  client.publish("arduino-weather-exchange", "temp");
+  
+  //Format for the message to the following SensorId,temperature,humidity
+  client.publish("arduino-weather-queue", "Sensor3,17.0,16.3");//getSensorId());// + "," + temp + "," + humidity);
 }
 
+String getSensorId() {
+  return "need-a-sensor-id";
+}
 
 void printWifiData() {
   // print your WiFi shield's IP address:
@@ -131,7 +139,7 @@ void printCurrentNet() {
   // print the MAC address of the router you're attached to:
   byte bssid[6];
   WiFi.BSSID(bssid);
-  Serial.print("BSSID: ");
+  Serial.print("MAC: ");
   Serial.print(bssid[5], HEX);
   Serial.print(":");
   Serial.print(bssid[4], HEX);
@@ -153,7 +161,6 @@ void printCurrentNet() {
   byte encryption = WiFi.encryptionType();
   Serial.print("DEBUG :: Encryption Type:");
   Serial.println(encryption, HEX);
-  Serial.println();
 }
 
 
@@ -237,28 +244,5 @@ void connectToWifi() {
 
 // handles message arrived on subscribed topic(s)
 void callback(char* topic, byte* payload, unsigned int length) {
-
-//  int i = 0;
-//
-//  //Serial.println("Message arrived:  topic: " + String(topic));
-//  //Serial.println("Length: " + String(length,DEC));
-//
-//  // create character buffer with ending null terminator (string)
-//  for (i = 0; i < length; i++) {
-//    message_buff[i] = payload[i];
-//  }
-//  message_buff[i] = '\0';
-//
-//  String msgString = String(message_buff);
-//
-//  //Serial.println("Payload: " + msgString);
-//
-//  if (msgString.equals("{\"command\":{\"lightmode\": \"OFF\"}}")) {
-//    senseMode = MODE_OFF;
-//  } else if (msgString.equals("{\"command\":{\"lightmode\": \"ON\"}}")) {
-//    senseMode = MODE_ON;
-//  } else if (msgString.equals("{\"command\":{\"lightmode\": \"SENSE\"}}")) {
-//    senseMode = MODE_SENSE;
-//  }
 }
 
