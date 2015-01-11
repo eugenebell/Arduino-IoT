@@ -1,7 +1,7 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <WiFiServer.h>
-#include <WiFiUdp.h>
+//#include <WiFiServer.h>
+//#include <WiFiUdp.h>
 #include <PubSubClient.h>
 #include <SPI.h>
 
@@ -20,6 +20,7 @@ byte serverRabbit[] = { 192, 168, 0, 4 };//192.168.0.8
 byte ip[]     = { 192, 168, 0, 4 };
 //char* user = "guest";
 //char* pwd = "guest";
+char clientName[] = "clientA";
 char user[] = "mqtt";
 char pwd[] = "mqtt";
 int port = 1883;
@@ -51,10 +52,11 @@ void setup() {
     digitalWrite(pinNumber, LOW);
   }
   connectToMQTT();
+ 
 }
 
 void loop() {
-  Serial.println("loop");
+  Serial.println("DEBUG :: loop()");
   float tempVar = readTemperature();
   char temp[10];
   dtostrf(tempVar, 2, 2, temp);
@@ -67,29 +69,14 @@ void loop() {
 }
 
 void connectToMQTT() {
-    
-// if (!client.connected()) {
-//    delay(1000);
-//    Serial.println("Connecting to RabbitMQ");
-//    if (client.connect("ArduinoClient", user, pwd)) {
-//      Serial.println("Connected to RabbitMQ");
-//    } else {
-//      Serial.println("Failed to Connect to RabbitMQ");
-//    }
-// }
-if (!client.connected()) {
-    delay(1000);
     Serial.println("INFO :: Connecting to RabbitMQ");
-    if (client.connect("ArduinoClient", user, pwd)) {
-      Serial.println("DEBUG :: About to sent message......");
-      client.publish("arduino-weather-queue","Sensor1,10.0,11.3");
+    if (client.connect(clientName, user, pwd)) {
+//      Serial.println("DEBUG :: About to sent message......");
+//      client.publish("arduino-weather-queue","Sensor1,10.0,11.3");
       Serial.println("INFO :: Connected to RabbitMQ");
     } else {
       Serial.println("ERROR :: Failed to Connect to RabbitMQ");
     }
-  } else {
-    client.publish("outTopic", "hello world");
-  }
 }
 
 void publishTempHumMsg(String temp, String humidity) {
@@ -102,12 +89,21 @@ void publishTempHumMsg(String temp, String humidity) {
   //"io.m2m/arduino/lightsensor"
   
   //Format for the message to the following SensorId,temperature,humidity
-  client.publish("arduino-weather-queue", "Sensor3,17.0,16.3");//getSensorId());// + "," + temp + "," + humidity);
+  
+  String tempHumMsg = getSensorId();// + "," + temp + "," + "0.01";
+  tempHumMsg.concat(",");
+  tempHumMsg.concat(temp);
+  tempHumMsg.concat(",");
+  tempHumMsg.concat(humidity);
+  char message_buff[80];
+  tempHumMsg.toCharArray(message_buff, tempHumMsg.length()+1);
+  client.publish("arduino-weather-exchange", message_buff);//"Sensor3,17.0,16.3");//getSensorId());// + "," + temp + "," + humidity);
 }
 
 String getSensorId() {
   return "need-a-sensor-id";
 }
+
 
 void printWifiData() {
   // print your WiFi shield's IP address:
@@ -234,7 +230,7 @@ void connectToWifi() {
     Serial.print("DEBUG :: Status of network connection is ");
     Serial.println(status);
     // wait 10 seconds for connection:
-    delay(3000);
+    delay(6000);
   }
   // you're connected now, so print out the data:
   Serial.println("DEBUG :: You're connected to the network");
