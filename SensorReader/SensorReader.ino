@@ -1,10 +1,6 @@
 #include <DHT.h>
-
-
 #include <WiFi.h>
 #include <WiFiClient.h>
-//#include <WiFiServer.h>
-//#include <WiFiUdp.h>
 #include <PubSubClient.h>
 #include <SPI.h>
 
@@ -24,7 +20,7 @@ int status = WL_IDLE_STATUS;     // the Wifi radio's status
 
 //#define MQTT_SERVER "192.168.0.8"
 byte mac[]    = {  0x90, 0xA2, 0xDA, 0x0E, 0x07, 0x18 };
-byte serverRabbit[] = { 192, 168, 0, 4 };//192.168.0.8
+byte serverRabbit[] = { 192, 168, 0, 2 };//192.168.0.8
 byte ip[]     = { 192, 168, 0, 4 };
 //char* user = "guest";
 //char* pwd = "guest";
@@ -33,30 +29,28 @@ char user[] = "mqtt";
 char pwd[] = "mqtt";
 int port = 1883;
 int tiltState;
-int previousTiltState = 2;
+//int previousTiltState = 2;
 
 //Time on arduino http://playground.arduino.cc/Code/DateTime
 
-char topicTempHum[] = "arduino-weather-exchange"; //change to a proper name!!!!!!!!!!!!!!!!!!!
+char topicTempHum[] = "arduino-weather"; //change to a proper name!!!!!!!!!!!!!!!!!!!
 
 // defines and variable for sensor/control mode
 #define MODE_OFF    0  // not sensing light, LED off
 #define MODE_ON     1  // not sensing light, LED on
 #define MODE_SENSE  2  // sensing light, LED controlled by software
 int senseMode = 0;
-char message_buff[100];
-//setup MQTT
+//char message_buff[100];
+
 WiFiClient wifiClient;
-//MQTT
+//setup MQTT
 PubSubClient client(serverRabbit, port, callback, wifiClient);
   
 void setup() {
   // initialize serial and wait for the port to open:
   Serial.begin(9600);
   while (!Serial);
-  
   connectToWifi();
-  
   // set the LED pins as outputs
   // the for() loop saves some extra coding
   for (int pinNumber = 2; pinNumber < 5; pinNumber++) {
@@ -72,38 +66,16 @@ void setup() {
 
 void loop() {
   Serial.println("DEBUG :: loop()");
-  float tempVar = readTemperature();
-  float humVar = getDHT11HumidityReadings();
-  char temp[10];
-  char humidity[10];
-  dtostrf(tempVar, 2, 2, temp);
-  dtostrf(humVar, 2, 2, humidity);
+  String temp = readTemperature();
   Serial.print("DEBUG :: Temp value return is : ");
   Serial.println(temp);
+  String humidity = getDHT11HumidityReadings();
   Serial.print("DEBUG :: Humidity value return is : ");
   Serial.println(humidity);
+  checkTiltState() ;
   publishTempHumMsg(temp, humidity);
   // MQTT client loop processing
   client.loop();
-}
-
-void checkTiltState() {
-  tiltState = digitalRead(tiltSensorPin);
-  Serial.print("INFO :: [1 -> On, 0 -> Off] :: Tilt State is : ");
-  Serial.println(tiltState);
-  if (tiltState != previousTiltState) {
-    previousTiltState = tiltState;
-    String tiltMsg = getSensorId();
-    tiltMsg.concat(",");
-    tiltMsg.concat(tiltState);
-//    tiltMsg.concat(",");
-//    tiltMsg.concat(time);
-    char message_buff[30];
-    tiltMsg.toCharArray(message_buff, tiltMsg.length()+1);
-    //send tilt state to the tilt queue
-    client.publish("arduino-tilt-exchange", message_buff);
-  }
-  
 }
 
 void connectToMQTT() {
@@ -113,6 +85,27 @@ void connectToMQTT() {
     } else {
       Serial.println("ERROR :: Failed to Connect to RabbitMQ");
     }
+}
+
+void checkTiltState() {
+  tiltState = digitalRead(tiltSensorPin);
+  Serial.print("INFO :: [1 -> On, 0 -> Off] :: Tilt State is : ");
+  Serial.println(tiltState);
+//  if (tiltState != previousTiltState) {
+//    previousTiltState = tiltState;
+    String tiltMsg = getSensorId();
+    tiltMsg.concat(",");
+    tiltMsg.concat(tiltState);
+//    tiltMsg.concat(",");
+//    tiltMsg.concat(time);
+    char message_buff[tiltMsg.length()];//TODO test that length() does not need +1 !!!!!!!!!!!!!
+    tiltMsg.toCharArray(message_buff, tiltMsg.length()+1);
+    //send tilt state to the tilt queue
+    boolean result = client.publish("arduino-tilt-exchange", message_buff);
+    Serial.print("DEBUG :: Result of tilt sensor push is : ");
+    Serial.println(result);
+//  }
+  
 }
 
 void publishTempHumMsg(String temp, String humidity) {
@@ -125,56 +118,23 @@ void publishTempHumMsg(String temp, String humidity) {
   tempHumMsg.concat(temp);
   tempHumMsg.concat(",");
   tempHumMsg.concat(humidity);
-  char message_buff[80];
+  char message_buff[tempHumMsg.length()];//TODO test that length() does not need +1 !!!!!!!!!!!!!
   tempHumMsg.toCharArray(message_buff, tempHumMsg.length()+1);
-  client.publish("arduino-weather-exchange", message_buff);
+  boolean result = client.publish("arduino-weather", message_buff);
+  Serial.print("DEBUG :: Result of Weather sensor push is : ");
+    Serial.println(result);
 }
 
 String getSensorId() {
   return "need-a-sensor-id";
 }
 
-
-void printWifiData() {
-  // print your WiFi shield's IP address:
-  IPAddress ip = WiFi.localIP();
-  Serial.print("DEBUG :: IP Address: ");
-  Serial.println(ip);
-  // print MAC address:
-  byte mac[6];
-  WiFi.macAddress(mac);
-  Serial.print("DEBUG :: MAC address: ");
-  Serial.print(mac[5], HEX);
-  Serial.print(":");
-  Serial.print(mac[4], HEX);
-  Serial.print(":");
-  Serial.print(mac[3], HEX);
-  Serial.print(":");
-  Serial.print(mac[2], HEX);
-  Serial.print(":");
-  Serial.print(mac[1], HEX);
-  Serial.print(":");
-  Serial.println(mac[0], HEX);
-    // print the SSID of the network you're attached to:
-  Serial.print("DEBUG :: SSID: ");
-  Serial.println(WiFi.SSID());
-  // print the received signal strength:
-  long rssi = WiFi.RSSI();
-  Serial.print("DEBUG :: Signal strength (RSSI):");
-  Serial.println(rssi);
-  // print the encryption type:
-  byte encryption = WiFi.encryptionType();
-  Serial.print("DEBUG :: Encryption Type:");
-  Serial.println(encryption, HEX);
-}
-
-float getDHT11HumidityReadings() {
+String getDHT11HumidityReadings() {
   float h = dht.readHumidity();
   // Read temperature as Celsius
   float t = dht.readTemperature();
   // Read temperature as Fahrenheit
   float f = dht.readTemperature(true);
-  
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t) || isnan(f)) {
     Serial.println("mmmmh!!! should put a retry count of 3 here !!! Failed to read from DHT sensor! looping!!");
@@ -197,10 +157,12 @@ float getDHT11HumidityReadings() {
   Serial.print(hi);
   Serial.println(" *F");
   delay(500);
- return h;
+  char humidity[10];
+  dtostrf(h, 2, 2, humidity);
+  return humidity;
 }
 
-float readTemperature() {
+String readTemperature() {
   // read the value on AnalogIn pin 0 and store it in a variable
   int sensorVal = analogRead(sensorPin);
   // send the 10-bit sensor value out the serial port
@@ -238,8 +200,9 @@ float readTemperature() {
   }
   delay(1000);
   
-  //TODO return the temperature value from this function
-  return temperature;
+  char temp[10];
+  dtostrf(temperature, 2, 2, temp);
+  return temp;
 }
 
 void connectToWifi() {
@@ -270,4 +233,39 @@ void connectToWifi() {
 // handles message arrived on subscribed topic(s)
 void callback(char* topic, byte* payload, unsigned int length) {
 }
+
+
+void printWifiData() {
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("DEBUG :: IP Address: ");
+  Serial.println(ip);
+  // print MAC address:
+  byte mac[6];
+  WiFi.macAddress(mac);
+  Serial.print("DEBUG :: MAC address: ");
+  Serial.print(mac[5], HEX);
+  Serial.print(":");
+  Serial.print(mac[4], HEX);
+  Serial.print(":");
+  Serial.print(mac[3], HEX);
+  Serial.print(":");
+  Serial.print(mac[2], HEX);
+  Serial.print(":");
+  Serial.print(mac[1], HEX);
+  Serial.print(":");
+  Serial.println(mac[0], HEX);
+    // print the SSID of the network you're attached to:
+  Serial.print("DEBUG :: SSID: ");
+  Serial.println(WiFi.SSID());
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("DEBUG :: Signal strength (RSSI):");
+  Serial.println(rssi);
+  // print the encryption type:
+  byte encryption = WiFi.encryptionType();
+  Serial.print("DEBUG :: Encryption Type:");
+  Serial.println(encryption, HEX);
+}
+
 
