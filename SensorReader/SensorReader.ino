@@ -3,6 +3,10 @@
 #include <WiFiClient.h>
 #include <PubSubClient.h>
 #include <SPI.h>
+#include <MFRC522.h>
+
+#define RST_PIN         9           // Configurable, see typical pin layout above
+#define SS_PIN          8          // Configurable, see typical pin layout above
 
 #define DHTTYPE DHT11   // DHT 11 
 #define DHTPIN A1 
@@ -22,8 +26,6 @@ int status = WL_IDLE_STATUS;     // the Wifi radio's status
 byte mac[]    = {  0x90, 0xA2, 0xDA, 0x0E, 0x07, 0x18 };
 byte serverRabbit[] = { 192, 168, 0, 2 };//192.168.0.8
 byte ip[]     = { 192, 168, 0, 4 };
-//char* user = "guest";
-//char* pwd = "guest";
 char clientName[] = "clientA";
 char user[] = "mqtt";
 char pwd[] = "mqtt";
@@ -45,21 +47,45 @@ char message_buff[100];
 WiFiClient wifiClient;
 //MQTT
 PubSubClient client(serverRabbit, port, callback, wifiClient);
+MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance.
+// Number of known default keys (hard-coded)
+// NOTE: Synchronize the NR_KNOWN_KEYS define with the defaultKeys[] array
+#define NR_KNOWN_KEYS   8
+// Known keys, see: https://code.google.com/p/mfcuk/wiki/MifareClassicDefaultKeys
+byte knownKeys[NR_KNOWN_KEYS][MFRC522::MF_KEY_SIZE] =  {
+    {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, // FF FF FF FF FF FF = factory default
+    {0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5}, // A0 A1 A2 A3 A4 A5
+    {0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5}, // B0 B1 B2 B3 B4 B5
+    {0x4d, 0x3a, 0x99, 0xc3, 0x51, 0xdd}, // 4D 3A 99 C3 51 DD
+    {0x1a, 0x98, 0x2c, 0x7e, 0x45, 0x9a}, // 1A 98 2C 7E 45 9A
+    {0xd3, 0xf7, 0xd3, 0xf7, 0xd3, 0xf7}, // D3 F7 D3 F7 D3 F7
+    {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, // AA BB CC DD EE FF
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}  // 00 00 00 00 00 00
+};
   
 void setup() {
   // initialize serial and wait for the port to open:
   Serial.begin(9600);
   while (!Serial);
-  
-  connectToWifi();
-  
+    
   // set the LED pins as outputs
   // the for() loop saves some extra coding
   for (int pinNumber = 2; pinNumber < 5; pinNumber++) {
     pinMode(pinNumber, OUTPUT);
     digitalWrite(pinNumber, LOW);
   }
+  
+  connectToWifi();
   connectToMQTT();
+  
+  setupDHT();
+  SPI.begin();                // Init SPI bus
+   mfrc522.PCD_Init();         // Init MFRC522 card 
+//  setupRFID();
+
+}
+
+void setupDHT() {
   dht.begin();
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
@@ -80,16 +106,46 @@ void loop() {
   Serial.println(humidity);
   publishTempHumMsg(temp, humidity);
   checkTiltState();
+  String rfid = getRfidUID();
+  if (rfid != "") {
+    Serial.print("DEBUG :: RFID value return is : ");
+    Serial.println(rfid);
+    publishRFIDMsg(rfid);
+  }
+  client.subscribe("arduino-rfid-validation");
   // MQTT client loop processing
   client.loop();
+}
+
+String getRfidUID() {
+   // Look for new cards
+  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+     Serial.println("PICC_IsNewCardPresent loop...");
+     return "";
+  }
+
+    // Select one of the cards
+  if ( ! mfrc522.PICC_ReadCardSerial()) {
+     Serial.println("PICC_ReadCardSerial loop...");
+     return "";
+  }
+    // Show some details of the PICC (that is: the tag/card)
+  
+  String rfidUid = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    rfidUid += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
+    rfidUid += String(mfrc522.uid.uidByte[i], HEX);
+  }
+  Serial.print("Card UID:");
+  Serial.println(rfidUid);
+  mfrc522.PICC_HaltA();       // Halt PICC
+  return rfidUid;
 }
 
 void checkTiltState() {
   tiltState = digitalRead(tiltSensorPin);
   Serial.print("INFO :: [1 -> On, 0 -> Off] :: Tilt State is : ");
   Serial.println(tiltState);
-//  if (tiltState != previousTiltState) {
-//    previousTiltState = tiltState;
     String tiltMsg = getSensorId();
     tiltMsg.concat(",");
     tiltMsg.concat(tiltState);
@@ -99,8 +155,6 @@ void checkTiltState() {
     tiltMsg.toCharArray(message_buff, tiltMsg.length()+1);
     //send tilt state to the tilt queue
     client.publish("arduino-tilt-exchange", message_buff);
-//  }
-  
 }
 
 void connectToMQTT() {
@@ -110,6 +164,21 @@ void connectToMQTT() {
     } else {
       Serial.println("ERROR :: Failed to Connect to RabbitMQ");
     }
+}
+
+void publishRFIDMsg(String rfid) {
+  //client.subscribe("inTopic");
+  Serial.println("DEBUG :: Sending RFID event : ");
+  Serial.print(rfid);
+  //Format for the message to the following SensorId,temperature,humidity
+  String rfidMsg = getSensorId();
+  rfidMsg.concat(",");
+  rfidMsg.concat(rfid);
+//  tempHumMsg.concat(",");
+//  tempHumMsg.concat(humidity);
+  char message_buff[40];
+  rfidMsg.toCharArray(message_buff, rfidMsg.length()+1);
+  client.publish("arduino-rfid", message_buff);
 }
 
 void publishTempHumMsg(String temp, String humidity) {
@@ -130,7 +199,6 @@ void publishTempHumMsg(String temp, String humidity) {
 String getSensorId() {
   return "need-a-sensor-id";
 }
-
 
 void printWifiData() {
   // print your WiFi shield's IP address:
@@ -266,5 +334,17 @@ void connectToWifi() {
 
 // handles message arrived on subscribed topic(s)
 void callback(char* topic, byte* payload, unsigned int length) {
+  //  arduino-rfid-validation
+  String resp = String((char*)payload);
+  Serial.println("Payload: " + resp);
+  Serial.print("---------------BOOM!!!!!!!!!!!!!!!!!!--------------------- : ");
+  if (resp == "Valid") {
+    digitalWrite(2, HIGH);
+  } else {
+    digitalWrite(3, HIGH);
+  }
+  delay(1000);
+  digitalWrite(2, LOW);
+  digitalWrite(3, LOW);
 }
 
