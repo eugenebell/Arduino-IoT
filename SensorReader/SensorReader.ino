@@ -156,6 +156,13 @@ void checkTiltState() {
       result = client.publish("arduino-tilt", message_buff);
       Serial.print("DEBUG :: arduino-tilt publish outcome 2 : ");
       Serial.println(result);
+      while ( status != WL_CONNECTED) {
+        connectToWifi();
+      }
+        if (!client.connected()) {
+    Serial.print("INFO :: We lost mqtt connection, reconnecting.... ");
+    connectToMQTT(); 
+  }
     }
   }
 }
@@ -194,6 +201,13 @@ void publishRFIDMsg(String rfid) {
     result = client.publish("arduino-rfid", message_buff);
     Serial.print("DEBUG :: arduino-rfid publish outcome 2 : ");
     Serial.println(result);
+    while ( status != WL_CONNECTED) {
+        connectToWifi();
+      }
+        if (!client.connected()) {
+    Serial.print("INFO :: We lost mqtt connection, reconnecting.... ");
+    connectToMQTT(); 
+  }
   }
 }
 
@@ -215,6 +229,13 @@ void publishTempHumMsg(String temp, String humidity) {
     result = client.publish("arduino-weather", message_buff);
     Serial.print("DEBUG :: arduino-weather publish outcome 2 : ");
     Serial.println(result);
+    while ( status != WL_CONNECTED) {
+        connectToWifi();
+      }
+      if (!client.connected()) {
+    Serial.print("INFO :: We lost mqtt connection, reconnecting.... ");
+    connectToMQTT(); 
+  }
   }
 }
 
